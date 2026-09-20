@@ -9,6 +9,27 @@ async function upload(page, kind, text, extra = false) {
   await page.locator(`#${kind}-file`).setInputFiles({ name: 'votes.zip', mimeType: 'application/zip', buffer: await zip.generateAsync({ type: 'nodebuffer' }) });
 }
 const current = csv([['Alice', 'Yes :)', '1', '2', '3'], ['Bob', 'No :(', '1', '', '3'], ['Carol', "I'm a brand new member!!", '2', '1', '3']]);
+test('older formats, combined filters, visible selection and logo', async ({ page }) => {
+  await page.goto('/book-club-vote-analyzer/');
+  await expect(page.getByAltText('Book Buzz bee and book logo')).toBeVisible();
+  await upload(page, 'current', csv([['Alice', 'No', '1', '2', '3'], ['Bob', 'No', '1', '2', '3'], ['Carol', 'Yes', '1', '2', '3']]));
+  await upload(page, 'past', 'Name,Old question\nAlice,hello\nCarol,world');
+  await expect(page.locator('#past-status')).toContainText('2 responses');
+  await page.getByRole('checkbox', { name: 'Have not attended + Voted in both months', exact: true }).uncheck();
+  const alice = page.getByRole('checkbox', { name: 'Count ballot: Alice (row 2)', exact: true });
+  await expect(alice).not.toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Count ballot: Bob (row 3)', exact: true })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Count ballot: Carol (row 4)', exact: true })).toBeChecked();
+  await expect(page.locator('.metric-strip')).toContainText('2ballots counted');
+  await alice.check();
+  await expect(page.locator('.metric-strip')).toContainText('3ballots counted');
+  await page.getByRole('button', { name: 'Follow filters — clear manual selections' }).click();
+  await expect(alice).not.toBeChecked();
+  await upload(page, 'past', 'Respondent,Something else\nAlice,yes');
+  await page.getByLabel('Member-name column').selectOption('0');
+  await page.getByRole('button', { name: 'Use this name column' }).click();
+  await expect(page.locator('#past-status')).toContainText('1 responses');
+});
 test('ZIP to results, override, filtering, correction, comparison and reset', async ({ page }) => {
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto('/book-club-vote-analyzer/');
@@ -19,10 +40,11 @@ test('ZIP to results, override, filtering, correction, comparison and reset', as
   await page.getByRole('button', { name: 'Include as entered' }).click();
   await expect(page.locator('.metric-strip')).toContainText('3ballots counted');
   await expect(page.locator('#results')).not.toContainText('Provisional');
+  await page.getByRole('button', { name: 'Follow filters — clear manual selections' }).click();
   await page.getByRole('checkbox', { name: 'Have not attended', exact: true }).uncheck();
   await expect(page.locator('.metric-strip')).toContainText('2ballots counted');
   await page.getByRole('checkbox', { name: 'Have not attended', exact: true }).check();
-  await page.getByRole('button', { name: 'Correct', exact: true }).click();
+  await page.locator('#ballots tr').filter({ hasText: 'Bob' }).getByRole('button', { name: 'Correct', exact: true }).click();
   await page.locator('#rank-2').fill('2');
   await page.getByRole('button', { name: 'Save correction' }).click();
   await expect(page.locator('#ballots')).toContainText('Corrected in this session');

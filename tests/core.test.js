@@ -4,6 +4,25 @@ import { parseRows, validateRanks, rankedPairs, compareMembers, selectBallots, d
 
 const headers = ['Timestamp', 'What is your full name?', 'Have you attended a Book Buzz meeting or event this semester?', 'Rank [A]', 'Rank [B]', 'Rank [C]'];
 const make = rows => parseRows([headers, ...rows.map(row => ['today', ...row])]);
+test('past imports only require names and permit explicit column mapping', () => {
+  const past = parseRows([['Timestamp', 'What is your full name?', 'Old question'], ['yesterday', 'Alice', 'anything']], 'past.csv', { mode: 'past' });
+  assert.equal(past.ballots[0].name, 'Alice');
+  assert.equal(past.ballots[0].attendance, 'unknown');
+  assert.equal(past.books.length, 0);
+  assert.equal(parseRows([['Respondent', 'Favorite'], ['Bob', 'x']], '', { mode: 'past', nameColumn: 0 }).ballots[0].name, 'Bob');
+});
+test('combination filters and manual selections', () => {
+  const current = make([['Alice', 'No', '1', '2', '3'], ['Bob', 'No', '1', '2', '3'], ['Carol', 'Yes', '1', '2', '3']]);
+  const past = parseRows([['Name'], ['Alice'], ['Carol']], '', { mode: 'past' });
+  const comparison = compareMembers(current, past), combinations = ['notAttended:currentOnly', 'attended:both'];
+  assert.deepEqual(selectBallots(current, { comparison, combinations }).included.map(row => row.ballot.name), ['Bob', 'Carol']);
+  current.ballots[0].manualSelection = true;
+  assert.equal(selectBallots(current, { comparison, combinations }).included.length, 3);
+  current.ballots[2].manualSelection = false;
+  assert.deepEqual(selectBallots(current, { comparison, combinations }).included.map(row => row.ballot.name), ['Alice', 'Bob']);
+  current.ballots[0].values = ['bad', '', ''];
+  assert.equal(selectBallots(current, { comparison, combinations }).rows[0].canSelect, false);
+});
 test('partial ballots, labels, ties, gaps, invalid values and empty ballots', () => {
   assert.equal(validateRanks(['1 (Most Preferred)', '2', '']).valid, true);
   assert.equal(validateRanks(['', '6', '7'], 7).canOverride, true);

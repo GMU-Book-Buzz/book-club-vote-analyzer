@@ -11,8 +11,9 @@ A free, static website for a nontechnical club organizer. ZIP extraction, CSV pa
 3. Review flagged ballots. Valid partial rankings start at 1 and contain no repeated or skipped ranks. Unranked books are tied last.
 4. Include, exclude, or correct flagged ballots. Including a gap preserves its order; including repeated ranks counts those books as tied. Unreadable ranks must be corrected. Changes affect only this browser session.
 5. Select any combination of meeting-attendance groups; all groups start selected. Unknown/missing answers have a separate category.
-6. Optionally add a past-month file. Review names, link spelling variants, and optionally count only returning voters. Prior book rankings never affect the current election.
-7. Record the result using your browser's Print / Save as PDF. Refreshing or leaving clears all files, corrections, overrides, and links. Keep original exports privately.
+6. Optionally add a past-month file. Only member names are required: attendance, book columns, and ranking format may differ or be absent. If the name column cannot be identified uniquely, choose it from the column picker. Review names, link spelling variants, and optionally count only returning voters. Prior book rankings never affect the current election.
+7. Use the attendance × voting-history checkbox grid to include any combination (for example, exclude only non-attendees who voted both months). Every ballot is displayed with a live checked/unchecked state and its features. Manual ballot checkboxes override filters, but cannot bypass missing names, unreadable ranks, or unresolved duplicates. “Follow filters” clears manual selections while retaining accepted rank overrides and corrections.
+8. Record the result using your browser's Print / Save as PDF. Refreshing or leaving clears all files, corrections, overrides, and links. Keep original exports privately.
 
 If duplicate names appear, select one submission or confirm they are different people. Different people with identical names require manual cross-month links. Comparison measures submission presence, not ballot validity. Missing names cannot be matched; correct the source CSV when a past-month name is missing.
 

@@ -1,7 +1,8 @@
 import { attendanceLabels, normalizeName, validateRanks, duplicateGroups, members, compareMembers, selectBallots, rankedPairs } from './core.js';
 
 const $ = id => document.getElementById(id);
-const state = { current: null, past: null, links: {}, attendance: Object.keys(attendanceLabels), returningOnly: false, issuesOnly: true };
+const allCombinations = () => Object.keys(attendanceLabels).flatMap(key => [`${key}:both`, `${key}:currentOnly`]);
+const state = { current: null, past: null, links: {}, attendance: Object.keys(attendanceLabels), combinations: allCombinations(), returningOnly: false, issuesOnly: false };
 const jobs = {}, files = {};
 let editing = null;
 
@@ -37,10 +38,11 @@ function status(kind, message, error = false) {
   $(`${kind}-status`).classList.toggle('error-text', error);
 }
 
-async function loadFile(kind, file, entry = null) {
+async function loadFile(kind, file, entry = null, nameColumn) {
   stopJob(kind);
   state[kind] = null;
   state.links = {};
+  state.combinations = allCombinations();
   state.returningOnly = false;
   $('returning-only').checked = false;
   files[kind] = file;
@@ -61,6 +63,15 @@ async function loadFile(kind, file, entry = null) {
     if (jobs[kind] !== job) return;
     stopJob(kind);
     if (data.error) { status(kind, data.error, true); return; }
+    if (data.nameColumns) {
+      status(kind, 'Choose the column containing full names. No attendance or ranking columns are required for a past month.');
+      const area = el('div', null, 'file-picker'), label = el('label', 'Member-name column'), select = el('select');
+      select.id = 'past-name-column'; label.htmlFor = select.id;
+      data.nameColumns.forEach((header, index) => select.append(option(header || `Column ${index + 1}`, String(index))));
+      const choose = button('Use this name column', 'choose-name');
+      choose.addEventListener('click', () => loadFile('past', file, data.entry, Number(select.value)));
+      area.append(label, select, choose); $('past-picker').append(area); return;
+    }
     if (data.entries) {
       status(kind, `${data.entries.length} CSVs found. Choose the response sheet below.`);
       const area = el('div', null, 'file-picker'), label = el('label', 'Response CSV'), select = el('select');
@@ -70,14 +81,14 @@ async function loadFile(kind, file, entry = null) {
       area.append(label, select, choose); $(`${kind}-picker`).append(area); return;
     }
     state[kind] = data.dataset;
-    status(kind, `${data.dataset.filename} · ${data.dataset.ballots.length} responses · ${data.dataset.books.length} books`);
+    status(kind, `${data.dataset.filename} · ${data.dataset.ballots.length} responses${kind === 'past' ? ' · names ready for comparison' : ` · ${data.dataset.books.length} books`}`);
     if (kind === 'current') {
       state.attendance = Object.keys(attendanceLabels);
       document.querySelectorAll('#attendance-filters input').forEach(input => { input.checked = true; });
     }
     render();
   };
-  try { const buffer = await file.arrayBuffer(); if (jobs[kind] === job) worker.postMessage({ buffer, filename: file.name, entry }, [buffer]); }
+  try { const buffer = await file.arrayBuffer(); if (jobs[kind] === job) worker.postMessage({ buffer, filename: file.name, entry, kind, nameColumn }, [buffer]); }
   catch { if (jobs[kind] === job) { stopJob(kind); status(kind, 'Could not open that file. Choose it again.', true); } }
 }
 
@@ -97,6 +108,34 @@ $('remove-past').addEventListener('click', () => {
 });
 $('returning-only').addEventListener('change', event => { state.returningOnly = event.target.checked; render(); });
 $('issues-only').addEventListener('change', event => { state.issuesOnly = event.target.checked; render(); });
+$('follow-filters').addEventListener('click', () => {
+  state.current?.ballots.forEach(ballot => { delete ballot.manualSelection; if (ballot.decision === 'exclude') ballot.decision = 'pending'; });
+  render();
+});
+
+function renderCombinations() {
+  const host = $('combination-filters'); host.replaceChildren();
+  $('combination-section').hidden = !state.past;
+  if (!state.past) return;
+  const { wrap, body } = table(['Current-month attendance', 'Voted in both months', 'This month only']);
+  for (const [key, name] of Object.entries(attendanceLabels)) {
+    const row = el('tr'); row.append(el('td', name));
+    for (const [participation, label] of [['both', 'Voted in both months'], ['currentOnly', 'This month only']]) {
+      const cell = el('td'), input = el('input'), value = `${key}:${participation}`;
+      input.type = 'checkbox'; input.checked = state.combinations.includes(value);
+      input.setAttribute('aria-label', `${name} + ${label}`);
+      input.dataset.combination = value;
+      input.addEventListener('change', () => {
+        state.combinations = input.checked ? [...state.combinations, value] : state.combinations.filter(item => item !== value);
+        render();
+        [...host.querySelectorAll('input')].find(node => node.dataset.combination === value)?.focus({ preventScroll: true });
+      });
+      cell.append(input); row.append(cell);
+    }
+    body.append(row);
+  }
+  host.append(wrap);
+}
 
 function renderDuplicates(kind) {
   const host = $(`${kind}-duplicates`); host.replaceChildren();
@@ -153,10 +192,24 @@ function renderBallots(selection) {
   const duplicates = new Set(duplicateGroups(state.current).map(([key]) => key));
   const rows = selection.rows.filter(row => !state.issuesOnly || !row.validation.valid || !row.ballot.identity || row.ballot.corrected || row.ballot.decision !== 'pending' || duplicates.has(row.ballot.identity));
   if (!rows.length) { host.append(notice('No ballots need attention. Uncheck the option above to review all responses.', true)); return; }
-  const { wrap, body } = table(['Member', 'Status', 'Preferences & notes', 'Organizer decision']);
+  const { wrap, body } = table(['Count ballot', 'Member & features', 'Status', 'Preferences & notes', 'Organizer decision']);
   for (const row of rows) {
     const { ballot, validation } = row, tr = el('tr');
+    tr.className = row.included ? 'ballot-counted' : 'ballot-excluded';
+    const countCell = el('td'), check = el('input');
+    check.type = 'checkbox'; check.checked = row.included; check.disabled = !row.canSelect;
+    check.dataset.action = 'toggle-ballot'; check.dataset.id = ballot.id;
+    check.setAttribute('aria-label', `Count ballot: ${ballot.name || `row ${ballot.row}`} (row ${ballot.row})`);
+    check.addEventListener('change', () => {
+      ballot.manualSelection = check.checked;
+      ballot.decision = check.checked ? 'include' : 'exclude';
+      render();
+    });
+    countCell.append(check);
     const member = el('td', ballot.name || 'Missing name'); member.append(el('small', `CSV row ${ballot.row} · ${attendanceLabels[ballot.attendance]}`));
+    member.append(el('small', row.participation === 'both' ? 'Voted in both months' : row.participation === 'currentOnly' ? 'This month only' : 'Past month not loaded'));
+    if (ballot.timestamp) member.append(el('small', ballot.timestamp));
+    if (ballot.manualSelection !== undefined) member.append(el('small', 'Manual selection · overrides filters'));
     const statusCell = el('td'); statusCell.append(el('span', row.included ? 'Counted' : row.unresolved ? 'Needs review' : 'Excluded', `status-pill ${row.unresolved ? 'warning' : row.included ? '' : 'excluded'}`));
     if (row.reason) statusCell.append(el('small', row.reason));
     if (ballot.corrected) statusCell.append(el('small', 'Corrected in this session'));
@@ -168,12 +221,17 @@ function renderBallots(selection) {
     const list = el('ul');
     state.current.books.forEach((book, index) => list.append(el('li', `${book}: ${ballot.values[index] || 'Unranked'}${ballot.corrected ? ` (original: ${ballot.original[index] || 'Unranked'})` : ''}`)));
     detail.append(list); info.append(detail);
+    if (ballot.features?.length) {
+      const features = el('details'); features.append(el('summary', 'View all response fields'));
+      const fields = el('ul'); ballot.features.forEach(field => fields.append(el('li', `${field.label}: ${field.value || 'Blank'}`)));
+      features.append(fields); info.append(features);
+    }
     const actions = el('td'), group = el('div', null, 'ballot-actions');
-    if ((validation.valid || validation.canOverride) && ballot.decision !== 'include') group.append(button(validation.valid ? 'Include' : 'Include as entered', 'include', ballot.id));
+    if (row.canSelect && ballot.decision !== 'include') group.append(button(validation.valid ? 'Include' : 'Include as entered', 'include', ballot.id));
     if (ballot.decision !== 'exclude') group.append(button('Exclude', 'exclude', ballot.id));
     group.append(button('Correct', 'edit', ballot.id));
     if (ballot.decision !== 'pending' || ballot.corrected) group.append(button('Undo changes', 'undo', ballot.id, 'text-button'));
-    actions.append(group); tr.append(member, statusCell, info, actions); body.append(tr);
+    actions.append(group); tr.append(countCell, member, statusCell, info, actions); body.append(tr);
   }
   host.append(wrap);
 }
@@ -238,10 +296,11 @@ function render() {
     return;
   }
   renderDuplicates('current'); renderDuplicates('past');
+  renderCombinations();
   const comparison = state.past ? compareMembers(state.current, state.past, state.links) : null;
-  const selection = selectBallots(state.current, { attendance: state.attendance, returningOnly: state.returningOnly, comparison });
+  const selection = selectBallots(state.current, { attendance: state.attendance, returningOnly: state.returningOnly, comparison, combinations: state.combinations });
   const result = rankedPairs(state.current.books, selection.included.map(row => row.validation.ranks));
-  const pastPending = state.returningOnly && duplicateGroups(state.past).some(([key]) => !state.past.duplicateDecisions[key]);
+  const pastPending = state.past && (state.returningOnly || state.combinations.length !== allCombinations().length) && duplicateGroups(state.past).some(([key]) => !state.past.duplicateDecisions[key]);
   renderResults(selection, result, pastPending); renderBallots(selection); renderComparison(comparison); renderMethod(result);
   if (focusAction) {
     const replacement = [...document.querySelectorAll('[data-action]')].find(node => node.dataset.action === focusAction && node.dataset.id === focusId)
@@ -272,10 +331,11 @@ document.addEventListener('click', event => {
   else if (action === 'link') state.links[$('link-current').value] = $('link-past').value;
   else {
     const ballot = state.current?.ballots.find(ballot => ballot.id === id); if (!ballot) return;
-    if (action === 'include' || action === 'exclude') ballot.decision = action;
+    if (action === 'include' || action === 'exclude') { ballot.decision = action; ballot.manualSelection = action === 'include'; }
     if (action === 'undo') {
       if (ballot.originalName !== undefined) { delete state.current.duplicateDecisions[ballot.identity]; ballot.name = ballot.originalName; ballot.identity = normalizeName(ballot.name); delete state.current.duplicateDecisions[ballot.identity]; state.links = {}; }
       ballot.values = [...ballot.original]; ballot.corrected = false; ballot.decision = 'pending';
+      delete ballot.manualSelection;
     }
   }
   render();
@@ -287,18 +347,18 @@ $('edit-form').addEventListener('submit', event => {
   const name = $('edit-name').value.trim(); if (!name) { $('edit-error').textContent = 'Enter the member’s name.'; return; }
   editing.originalName ??= editing.name;
   if (normalizeName(name) !== editing.identity) { delete state.current.duplicateDecisions[editing.identity]; delete state.current.duplicateDecisions[normalizeName(name)]; state.links = {}; }
-  editing.name = name; editing.identity = normalizeName(name); editing.values = values; editing.corrected = true; editing.decision = 'include';
+  editing.name = name; editing.identity = normalizeName(name); editing.values = values; editing.corrected = true; editing.decision = 'include'; editing.manualSelection = true;
   $('edit-dialog').close(); render();
 });
 $('edit-cancel').addEventListener('click', () => $('edit-dialog').close());
 $('reset').addEventListener('click', () => { if (state.current || state.past || files.current || files.past) $('reset-dialog').showModal(); });
 $('reset-cancel').addEventListener('click', () => $('reset-dialog').close());
 $('reset-confirm').addEventListener('click', () => {
-  stopJob('current'); stopJob('past'); state.current = null; state.past = null; state.links = {}; state.returningOnly = false; state.issuesOnly = true; state.attendance = Object.keys(attendanceLabels);
+  stopJob('current'); stopJob('past'); state.current = null; state.past = null; state.links = {}; state.returningOnly = false; state.issuesOnly = false; state.attendance = Object.keys(attendanceLabels); state.combinations = allCombinations();
   delete files.current; delete files.past;
   for (const kind of ['current', 'past']) { $(`${kind}-picker`).replaceChildren(); $(`${kind}-file`).value = ''; }
   status('current', 'ZIP or CSV · up to 10 MB · files stay on this device'); status('past', 'Book selections can be different between months.');
-  $('returning-only').checked = false; $('issues-only').checked = true;
+  $('returning-only').checked = false; $('issues-only').checked = false;
   document.querySelectorAll('#attendance-filters input').forEach(input => { input.checked = true; });
   $('global-message').replaceChildren(notice('Ready for a new month. All previous data and session decisions have been cleared.', true));
   $('reset-dialog').close(); render(); $('current-file').focus();

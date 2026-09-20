@@ -29,23 +29,29 @@ export function validateRanks(values, count = values.length) {
   return { ranks, issues, valid: !issues.length, canOverride: !invalid && filled.length > 0 };
 }
 
-export function parseRows(rows, filename = '') {
+export function nameColumns(headers) {
+  return headers.flatMap((header, index) => /\bname\b/i.test(header) && !/\[[^\]]+\]\s*$/.test(header) ? [index] : []);
+}
+
+export function parseRows(rows, filename = '', { mode = 'current', nameColumn: chosenNameColumn } = {}) {
   if (rows.length < 2) throw new Error('The CSV needs a header row and at least one response.');
   const headers = rows[0].map(cell => String(cell).replace(/^\uFEFF/, '').trim());
   const books = headers.map((header, column) => ({ title: header.match(/\[([^\]]+)\]\s*$/)?.[1]?.trim(), column })).filter(book => book.title);
-  if (books.length < 2 || books.length > 30) throw new Error('Expected 2–30 book columns with titles in square brackets, like [Frankenstein].');
-  if (new Set(books.map(book => normalizeName(book.title))).size !== books.length) throw new Error('Two book columns have the same title. Give each book a distinct title.');
-  const nameColumn = headers.findIndex(header => /full name|^name$/i.test(header));
+  if (mode !== 'past' && (books.length < 2 || books.length > 30)) throw new Error('Expected 2–30 book columns with titles in square brackets, like [Frankenstein].');
+  if (mode !== 'past' && new Set(books.map(book => normalizeName(book.title))).size !== books.length) throw new Error('Two book columns have the same title. Give each book a distinct title.');
+  const detected = nameColumns(headers);
+  const nameColumn = chosenNameColumn ?? (detected.length === 1 ? detected[0] : -1);
   const attendanceColumn = headers.findIndex(header => /attended.*(?:meeting|event)/i.test(header));
   const timestampColumn = headers.findIndex(header => /^timestamp$/i.test(header));
-  if (nameColumn < 0 || attendanceColumn < 0) throw new Error('The CSV needs a full-name column and a meeting-attendance column. Export the original form responses again.');
+  if (!Number.isInteger(nameColumn) || nameColumn < 0 || nameColumn >= headers.length) throw new Error('Select the column containing each member’s full name.');
+  if (mode !== 'past' && attendanceColumn < 0) throw new Error('The current-month CSV needs a meeting-attendance column. Past-month comparisons only need names.');
   const ballots = [];
   rows.slice(1).forEach((row, index) => {
     if (row.every(cell => !String(cell).trim())) return;
     if (row.length !== headers.length) throw new Error(`CSV row ${index + 2} has ${row.length} columns; expected ${headers.length}. Check its commas and quotation marks.`);
     const name = String(row[nameColumn]).trim();
     const original = books.map(book => row[book.column]);
-    ballots.push({ id: String(index + 2), row: index + 2, name, identity: normalizeName(name), timestamp: timestampColumn < 0 ? '' : row[timestampColumn], attendance: attendanceCategory(row[attendanceColumn]), attendanceAnswer: row[attendanceColumn], original, values: [...original], decision: 'pending', corrected: false });
+    ballots.push({ id: String(index + 2), row: index + 2, name, identity: normalizeName(name), timestamp: timestampColumn < 0 ? '' : row[timestampColumn], attendance: attendanceCategory(row[attendanceColumn]), attendanceAnswer: row[attendanceColumn] ?? 'Not collected', features: headers.flatMap((header, column) => books.some(book => book.column === column) ? [] : [{ label: header, value: row[column] }]), original, values: [...original], decision: 'pending', corrected: false });
   });
   if (!ballots.length) throw new Error('This CSV has no responses.');
   if (ballots.length > 10000) throw new Error('Please use an export with no more than 10,000 responses.');
@@ -93,21 +99,25 @@ export function compareMembers(current, past, links = {}) {
   return { both, currentOnly, pastOnly: pastMembers.filter(member => !used.has(member.key)) };
 }
 
-export function selectBallots(dataset, { attendance = Object.keys(attendanceLabels), returningOnly = false, comparison = null } = {}) {
+export function selectBallots(dataset, { attendance = Object.keys(attendanceLabels), returningOnly = false, comparison = null, combinations = null } = {}) {
   const duplicates = new Set(duplicateGroups(dataset).map(([key]) => key));
   const returning = new Set(comparison?.both.flatMap(pair => pair.current.ballotIds) ?? []);
   const rows = dataset.ballots.map(ballot => {
     const validation = validateRanks(ballot.values, dataset.books.length);
     let reason = '', unresolved = false;
     const choice = dataset.duplicateDecisions[ballot.identity];
-    if (!attendance.includes(ballot.attendance)) reason = 'Attendance filter';
-    else if (returningOnly && !returning.has(ballot.id)) reason = 'Not matched in both months';
-    else if (ballot.decision === 'exclude') reason = 'Excluded by organizer';
+    const participation = comparison ? returning.has(ballot.id) ? 'both' : 'currentOnly' : 'unavailable';
+    const filterReason = !attendance.includes(ballot.attendance) ? 'Attendance filter'
+      : returningOnly && !returning.has(ballot.id) ? 'Not matched in both months'
+      : comparison && combinations && !combinations.includes(`${ballot.attendance}:${participation}`) ? 'Attendance + month filter' : '';
+    if (ballot.manualSelection === false || ballot.decision === 'exclude') reason = 'Excluded by organizer';
+    else if (filterReason && ballot.manualSelection !== true) reason = filterReason;
     else if (!ballot.identity) { reason = 'Missing member name'; unresolved = true; }
     else if (duplicates.has(ballot.identity) && !choice) { reason = 'Choose a duplicate submission'; unresolved = true; }
     else if (duplicates.has(ballot.identity) && choice !== 'distinct' && choice !== ballot.id) reason = 'Earlier / other submission';
     else if (!validation.valid && !(validation.canOverride && ballot.decision === 'include')) { reason = validation.issues.join(' '); unresolved = true; }
-    return { ballot, validation, included: !reason, reason, unresolved };
+    const canSelect = !!ballot.identity && (validation.valid || validation.canOverride) && (!duplicates.has(ballot.identity) || choice === 'distinct' || choice === ballot.id);
+    return { ballot, validation, included: !reason, reason, unresolved, participation, canSelect, filterReason };
   });
   return { rows, included: rows.filter(row => row.included), unresolved: rows.filter(row => row.unresolved).length };
 }

@@ -40,7 +40,10 @@ self.onmessage = async ({ data }) => {
     const parsed = Papa.parse(text, { skipEmptyLines: 'greedy', dynamicTyping: false });
     const error = parsed.errors.find(item => item.code !== 'UndetectableDelimiter');
     if (error) throw new Error(`CSV could not be read: ${error.message}${error.row === undefined ? '' : ` (data row ${error.row + 1})`}.`);
-    const { parseRows } = await import('./core.js');
-    postMessage({ dataset: parseRows(parsed.data, label) });
+    const { parseRows, nameColumns } = await import('./core.js');
+    if (data.kind === 'past' && data.nameColumn === undefined && nameColumns(parsed.data[0]).length !== 1) {
+      postMessage({ nameColumns: parsed.data[0], entry: label }); return;
+    }
+    postMessage({ dataset: parseRows(parsed.data, label, { mode: data.kind, nameColumn: data.nameColumn }) });
   } catch (error) { postMessage({ error: error.message || 'Could not read this file. Please export a fresh CSV.' }); }
 };
