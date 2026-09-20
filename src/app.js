@@ -83,8 +83,11 @@ async function loadFile(kind, file, entry = null, nameColumn) {
     state[kind] = data.dataset;
     status(kind, `${data.dataset.filename} · ${data.dataset.ballots.length} responses${kind === 'past' ? ' · names ready for comparison' : ` · ${data.dataset.books.length} books`}`);
     if (kind === 'current') {
+      state.issuesOnly = false;
+      $('issues-only').checked = false;
       state.attendance = Object.keys(attendanceLabels);
       document.querySelectorAll('#attendance-filters input').forEach(input => { input.checked = true; });
+      if (!data.dataset.hasAttendance) $('global-message').append(notice('This file does not collect meeting attendance. Those ballots are included under “Unknown / missing answer”; attendance has not been guessed.'));
     }
     render();
   };
@@ -187,6 +190,7 @@ function renderResults(selection, result, pastPending) {
 }
 
 function renderBallots(selection) {
+  $('issues-only').checked = state.issuesOnly;
   $('review-count').textContent = `${selection.rows.filter(row => !row.validation.valid || !row.ballot.identity).length} flagged`;
   const host = $('ballots'); host.replaceChildren();
   const duplicates = new Set(duplicateGroups(state.current).map(([key]) => key));
@@ -218,6 +222,7 @@ function renderBallots(selection) {
     if (validation.issues.length) info.append(el('span', validation.issues.join(' ')));
     else info.append(el('span', `${validation.ranks.filter(rank => rank !== null).length} books ranked`));
     const detail = el('details'), summary = el('summary', 'View choices'); detail.append(summary);
+    detail.append(el('p', row.participation === 'both' ? 'Voted last month: Yes — matched in the comparison file.' : row.participation === 'currentOnly' ? 'Voted last month: No matching name found. Review spelling variants in Returning members.' : 'Voted last month: Unknown — load a past-month file to compare.', 'hint'));
     const list = el('ul');
     state.current.books.forEach((book, index) => list.append(el('li', `${book}: ${ballot.values[index] || 'Unranked'}${ballot.corrected ? ` (original: ${ballot.original[index] || 'Unranked'})` : ''}`)));
     detail.append(list); info.append(detail);

@@ -23,6 +23,7 @@ If duplicate names appear, select one submission or confirm they are different p
 - 2–30 distinct book columns; titles are detected anew each month. The supplied format uses seven books.
 - Ranks can be plain integers or labels such as `1 (Most Preferred)` and `7 (Least Preferred)`. Blank cells are unranked.
 - Attendance answers beginning `Yes` and `No` map to their categories; answers containing `new` map to new members. Other values are shown as unknown.
+- Attendance columns are optional, including for the main month. If absent, all responses have unknown attendance and are included by default. New main-month imports reset the ballot list to show every response. Each ballot's expanded choices show whether its name matched the comparison month.
 - UTF-8 CSV, up to 10 MB input, 20 MB expanded ZIP, 100 archive entries, and 10,000 nonempty responses. Multiple CSVs trigger a selection control. Files that cannot be parsed within 15 seconds are rejected without freezing the page.
 - Every ballot has equal weight. Ranked Pairs Margin sorts strict victories by margin descending and opposition ascending. Equal-strength victories are processed together; new cycle-participating edges are rejected. Previously locked edges remain. Repeatedly removing nodes without incoming edges produces tied ranking tiers. No arbitrary alphabetical tie-break is used.
 - Provisional means eligible ballots or returning-voter duplicate identities still need review. Explicitly excluded ballots are resolved decisions. With zero eligible ballots there is no result.

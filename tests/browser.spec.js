@@ -9,6 +9,26 @@ async function upload(page, kind, text, extra = false) {
   await page.locator(`#${kind}-file`).setInputFiles({ name: 'votes.zip', mimeType: 'application/zip', buffer: await zip.generateAsync({ type: 'nodebuffer' }) });
 }
 const current = csv([['Alice', 'Yes :)', '1', '2', '3'], ['Bob', 'No :(', '1', '', '3'], ['Carol', "I'm a brand new member!!", '2', '1', '3']]);
+test('missing attendance, fresh list state, and past-month status inside each ballot', async ({ page }) => {
+  await page.goto('/book-club-vote-analyzer/');
+  await upload(page, 'current', current);
+  await expect(page.locator('#ballots tbody tr')).toHaveCount(3);
+  await page.locator('#issues-only').check();
+  await expect(page.locator('#ballots tbody tr')).toHaveCount(1);
+  await upload(page, 'current', 'Name,Rank [Old A],Rank [Old B]\nAlice,1,2\nBob,2,1');
+  await expect(page.locator('#current-status')).toContainText('2 responses');
+  await expect(page.locator('#issues-only')).not.toBeChecked();
+  await expect(page.locator('#ballots tbody tr')).toHaveCount(2);
+  await expect(page.locator('#global-message')).toContainText('does not collect meeting attendance');
+  await upload(page, 'past', 'Name\nAlice');
+  await expect(page.locator('#past-status')).toContainText('1 responses');
+  const alice = page.locator('#ballots tbody tr').filter({ hasText: 'Alice' });
+  await alice.getByText('View choices', { exact: true }).click();
+  await expect(alice).toContainText('Voted last month: Yes');
+  const bob = page.locator('#ballots tbody tr').filter({ hasText: 'Bob' });
+  await bob.getByText('View choices', { exact: true }).click();
+  await expect(bob).toContainText('Voted last month: No matching name found');
+});
 test('older formats, combined filters, visible selection and logo', async ({ page }) => {
   await page.goto('/book-club-vote-analyzer/');
   await expect(page.getByAltText('Book Buzz bee and book logo')).toBeVisible();

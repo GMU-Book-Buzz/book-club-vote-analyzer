@@ -44,7 +44,6 @@ export function parseRows(rows, filename = '', { mode = 'current', nameColumn: c
   const attendanceColumn = headers.findIndex(header => /attended.*(?:meeting|event)/i.test(header));
   const timestampColumn = headers.findIndex(header => /^timestamp$/i.test(header));
   if (!Number.isInteger(nameColumn) || nameColumn < 0 || nameColumn >= headers.length) throw new Error('Select the column containing each member’s full name.');
-  if (mode !== 'past' && attendanceColumn < 0) throw new Error('The current-month CSV needs a meeting-attendance column. Past-month comparisons only need names.');
   const ballots = [];
   rows.slice(1).forEach((row, index) => {
     if (row.every(cell => !String(cell).trim())) return;
@@ -55,7 +54,7 @@ export function parseRows(rows, filename = '', { mode = 'current', nameColumn: c
   });
   if (!ballots.length) throw new Error('This CSV has no responses.');
   if (ballots.length > 10000) throw new Error('Please use an export with no more than 10,000 responses.');
-  return { filename, books: books.map(book => book.title), ballots, duplicateDecisions: {} };
+  return { filename, books: books.map(book => book.title), ballots, duplicateDecisions: {}, hasAttendance: attendanceColumn >= 0 };
 }
 
 export function duplicateGroups(dataset) {

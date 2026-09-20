@@ -4,6 +4,13 @@ import { parseRows, validateRanks, rankedPairs, compareMembers, selectBallots, d
 
 const headers = ['Timestamp', 'What is your full name?', 'Have you attended a Book Buzz meeting or event this semester?', 'Rank [A]', 'Rank [B]', 'Rank [C]'];
 const make = rows => parseRows([headers, ...rows.map(row => ['today', ...row])]);
+test('a current month without attendance is included as unknown', () => {
+  const data = parseRows([['Name', 'Rank [A]', 'Rank [B]'], ['Alice', '1', '2']]);
+  assert.equal(data.hasAttendance, false);
+  assert.equal(data.ballots[0].attendance, 'unknown');
+  assert.equal(selectBallots(data).included.length, 1);
+  assert.equal(selectBallots(data, { attendance: ['attended'] }).included.length, 0);
+});
 test('past imports only require names and permit explicit column mapping', () => {
   const past = parseRows([['Timestamp', 'What is your full name?', 'Old question'], ['yesterday', 'Alice', 'anything']], 'past.csv', { mode: 'past' });
   assert.equal(past.ballots[0].name, 'Alice');
