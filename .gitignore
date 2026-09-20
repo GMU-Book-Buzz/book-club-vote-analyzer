@@ -1,0 +1,9 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+.cache/
+*.zip
+*.csv
+!tests/fixtures/*.csv
+!public/example.csv

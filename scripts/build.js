@@ -1,0 +1,10 @@
+import { mkdir, cp, copyFile } from 'node:fs/promises';
+await mkdir('dist/vendor', { recursive: true });
+await cp('public', 'dist', { recursive: true });
+await cp('src', 'dist', { recursive: true });
+await copyFile('node_modules/jszip/dist/jszip.min.js', 'dist/vendor/jszip.min.js');
+await copyFile('node_modules/papaparse/papaparse.min.js', 'dist/vendor/papaparse.min.js');
+await copyFile('node_modules/jszip/LICENSE.markdown', 'dist/vendor/JSZIP-LICENSE.md');
+await copyFile('node_modules/papaparse/LICENSE', 'dist/vendor/PAPAPARSE-LICENSE.txt');
+await copyFile('THIRD_PARTY_NOTICES.md', 'dist/THIRD_PARTY_NOTICES.md');
+console.log('Built static site in dist/');

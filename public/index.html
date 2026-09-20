@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Choose Book Buzz’s next read. Analyze ranked book ballots privately in your browser.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Book Buzz · Vote analyzer</title>
+  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="topbar"><a class="brand" href="./" aria-label="Book Buzz home"><span class="brand-icon" aria-hidden="true">B</span>BOOK BUZZ<span class="brand-divider">/</span><span class="brand-sub">Vote analyzer</span></a><span class="local-badge"><span aria-hidden="true">●</span> Runs on your device</span></header>
+  <main id="main">
+    <div class="page-heading"><div><p class="eyebrow">BOOK OF THE MONTH</p><h1>Find your next read.</h1><p class="lead">Turn your club’s ranked choices into a clear, explainable result.</p></div><button id="reset" class="secondary" type="button">Start a new month</button></div>
+    <section class="intro-strip" aria-label="How it works"><span><b>01</b> Choose your export</span><span><b>02</b> Review the ballots</span><span><b>03</b> See the result</span><a href="#instructions">First time? Read the guide ↗</a></section>
+    <div id="global-message" role="status" aria-live="polite"></div>
+    <section class="upload-grid" aria-label="Import monthly responses">
+      <div class="card upload-card"><div class="section-label"><span>01 / IMPORT</span><span class="tag">Required</span></div><h2>This month’s votes</h2><p>Choose the ZIP exported from your response sheet.</p><label class="file-label" for="current-file">Choose current-month ZIP</label><input class="file-input" id="current-file" type="file" accept=".zip,.csv"><p id="current-status" class="file-status" role="status">ZIP or CSV · up to 10 MB · files stay on this device</p><div id="current-picker"></div></div>
+      <div class="card upload-card"><div class="section-label"><span>COMPARE MONTHS</span><span class="tag">Optional</span></div><h2>Who came back?</h2><p>Add a previous month to find returning voters.</p><label class="file-label secondary" for="past-file">Choose past-month ZIP</label><input class="file-input" id="past-file" type="file" accept=".zip,.csv"><p id="past-status" class="file-status" role="status">Book selections can be different between months.</p><div id="past-picker"></div><button type="button" id="remove-past" class="text-button" hidden>Remove past month</button></div>
+    </section>
+    <div id="workspace" hidden>
+      <section class="card filters"><div><p class="eyebrow">02 / ELIGIBILITY</p><h2>Whose votes count?</h2><p>Change a filter to recalculate the results immediately.</p></div><div><fieldset id="attendance-filters"><legend>Meeting attendance</legend></fieldset><label class="check returning"><input type="checkbox" id="returning-only" disabled> Only members who voted in both months</label><p class="hint" id="returning-hint">Add a past month to enable this filter.</p></div></section>
+      <section id="results" class="results" aria-label="Election results"></section>
+      <section class="card review-section"><div class="section-label"><span>REVIEW & VERIFY</span><span id="review-count" class="tag"></span></div><h2>Ballot review</h2><p>Flagged ballots start excluded. Review a member’s choices before including or correcting them.</p><div id="current-duplicates"></div><label class="check review-toggle"><input type="checkbox" id="issues-only" checked> Show only ballots needing attention or with organizer decisions</label><div id="ballots"></div></section>
+      <section id="comparison-section" class="card" hidden><div class="section-label"><span>MONTH-TO-MONTH</span><span class="tag">Based on submissions</span></div><h2>Returning members</h2><p>Names match regardless of capitalization or extra spaces. Link spelling variants manually. Submitting a ballot counts here even if its rankings are invalid.</p><div id="past-duplicates"></div><div id="comparison"></div></section>
+      <section class="card method-card"><details id="method-details"><summary>How was this result calculated?</summary><div id="method"></div></details></section>
+    </div>
+    <section id="empty-state" class="empty-state"><span class="empty-mark" aria-hidden="true">1 → 2 → 3</span><h2>Every preference has a place.</h2><p>Choose this month’s file to see the winner, review individual ballots,<br class="desktop-break"> and explore how the books compare head to head.</p></section>
+    <section id="instructions" class="card guide"><details><summary>Your monthly guide</summary><ol><li>Export your form’s response sheet as a CSV or a ZIP containing the CSV. Keep the original column headers.</li><li>Choose it under <strong>This month’s votes</strong>. Book titles are detected from the headers automatically.</li><li>Review any warnings. Partial ballots should start at 1 and continue without gaps. Unranked books are tied last.</li><li>Choose which attendance groups should count. All groups are included initially.</li><li>Optionally add a past month, check the name matches, and turn on the returning-voters filter.</li><li>Read the winner and ranking. If books tie, the app reports the tie for your club to resolve.</li></ol><p><strong>Nothing is saved after you leave or refresh.</strong> Keep your original exports. Corrections, links, and overrides apply only to this session. Use your browser’s Print command to save a result for your records.</p><p><strong>Passing this on?</strong> Give the next organizer this website address and the original exports through your usual private channel. Monthly use needs no login. Code and maintenance instructions are in the <a href="https://github.com/GMU-Book-Buzz/book-club-vote-analyzer" target="_blank" rel="noreferrer">club repository</a>.</p></details></section>
+    <footer><span>BOOK BUZZ <span class="footer-dot">·</span> A little less counting. A little more reading.</span><span>Local processing. No accounts. No uploads to a server.</span></footer>
+  </main>
+  <dialog id="edit-dialog"><form id="edit-form"><div class="section-label"><span>CORRECT A BALLOT</span></div><h2 id="edit-title"></h2><p>Use each rank once, starting at 1. Leave books blank if unranked. Original values are kept for review.</p><label>Member name<input id="edit-name" required maxlength="200"></label><div id="edit-fields"></div><p id="edit-error" role="alert" class="error-text"></p><div class="dialog-actions"><button type="button" id="edit-cancel" class="secondary">Cancel</button><button type="submit">Save correction</button></div></form></dialog>
+  <dialog id="reset-dialog"><h2>Start fresh?</h2><p>This clears both files and all corrections, overrides, and name links. Your original files will not change.</p><div class="dialog-actions"><button id="reset-cancel" class="secondary">Keep working</button><button id="reset-confirm">Reset everything</button></div></dialog>
+  <noscript><p class="card">Enable JavaScript to read and analyze your files locally.</p></noscript>
+</body>
+</html>

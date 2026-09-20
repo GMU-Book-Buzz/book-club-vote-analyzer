@@ -1,0 +1,78 @@
+import { test, expect } from '@playwright/test';
+import JSZip from 'jszip';
+import Papa from 'papaparse';
+const headers = ['Timestamp', 'What is your full name?', 'Have you attended a Book Buzz meeting or event this semester?', 'Rank [Book A]', 'Rank [Book B]', 'Rank [Book C]'];
+const csv = rows => Papa.unparse([headers, ...rows.map(row => ['2026/09/19 11:14:44 AM AST', ...row])]);
+async function upload(page, kind, text, extra = false) {
+  const zip = new JSZip().file('responses.csv', text);
+  if (extra) zip.file('another.csv', text);
+  await page.locator(`#${kind}-file`).setInputFiles({ name: 'votes.zip', mimeType: 'application/zip', buffer: await zip.generateAsync({ type: 'nodebuffer' }) });
+}
+const current = csv([['Alice', 'Yes :)', '1', '2', '3'], ['Bob', 'No :(', '1', '', '3'], ['Carol', "I'm a brand new member!!", '2', '1', '3']]);
+test('ZIP to results, override, filtering, correction, comparison and reset', async ({ page }) => {
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/book-club-vote-analyzer/');
+  await upload(page, 'current', current);
+  await expect(page.locator('#current-status')).toContainText('3 responses');
+  await expect(page.locator('.metric-strip')).toContainText('2ballots counted');
+  await expect(page.locator('#results')).toContainText('Provisional');
+  await page.getByRole('button', { name: 'Include as entered' }).click();
+  await expect(page.locator('.metric-strip')).toContainText('3ballots counted');
+  await expect(page.locator('#results')).not.toContainText('Provisional');
+  await page.getByRole('checkbox', { name: 'Have not attended', exact: true }).uncheck();
+  await expect(page.locator('.metric-strip')).toContainText('2ballots counted');
+  await page.getByRole('checkbox', { name: 'Have not attended', exact: true }).check();
+  await page.getByRole('button', { name: 'Correct', exact: true }).click();
+  await page.locator('#rank-2').fill('2');
+  await page.getByRole('button', { name: 'Save correction' }).click();
+  await expect(page.locator('#ballots')).toContainText('Corrected in this session');
+  await upload(page, 'past', csv([[' ALICE ', 'Yes', '1', '2', '3'], ['Robert', 'No', '1', '2', '3']]));
+  await expect(page.locator('#past-status')).toContainText('2 responses');
+  await page.getByText('Review matches or link spelling variants').click();
+  await page.locator('#link-current').selectOption('bob');
+  await page.getByRole('button', { name: 'Link these members' }).click();
+  await page.locator('#returning-only').check();
+  await expect(page.locator('.metric-strip')).toContainText('2ballots counted');
+  await page.getByText('How was this result calculated?').click();
+  await expect(page.locator('#method')).toContainText('Head-to-head preferences');
+  await page.getByRole('button', { name: 'Start a new month' }).click();
+  await page.getByRole('button', { name: 'Reset everything' }).click();
+  await expect(page.locator('#workspace')).toBeHidden();
+  await expect(page.locator('#ballots')).toHaveText('');
+  await expect(page.locator('#edit-name')).toHaveValue('');
+  expect(errors).toEqual([]);
+});
+test('multi-CSV picker, malformed archive, missing headers and injection safety', async ({ page }) => {
+  await page.goto('/book-club-vote-analyzer/');
+  await upload(page, 'current', current, true);
+  await expect(page.locator('#current-status')).toContainText('2 CSVs');
+  await page.getByRole('button', { name: 'Use this CSV' }).click();
+  await expect(page.locator('#workspace')).toBeVisible();
+  await page.locator('#current-file').setInputFiles({ name: 'broken.zip', mimeType: 'application/zip', buffer: Buffer.from('not a zip') });
+  await expect(page.locator('#current-status')).toHaveClass(/error-text/);
+  await expect(page.locator('#workspace')).toBeHidden();
+  await upload(page, 'current', 'Name,Other\nAlice,1');
+  await expect(page.locator('#current-status')).toContainText('book columns');
+  await upload(page, 'current', csv([['<img src=x onerror=alert(1)>', 'Yes', '1', '3', '']]));
+  await expect(page.locator('#ballots')).toContainText('<img src=x onerror=alert(1)>');
+  await expect(page.locator('#ballots img')).toHaveCount(0);
+});
+test('duplicates and responsive layout', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/book-club-vote-analyzer/');
+  await upload(page, 'current', csv([['Alice', 'Yes', '1', '2', '3'], [' ALICE ', 'No', '3', '2', '1']]));
+  await expect(page.locator('#results')).toContainText('No eligible ballots');
+  await page.getByLabel('current duplicate: Alice').selectOption('2');
+  await expect(page.locator('.metric-strip')).toContainText('1ballots counted');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: 'test-results/mobile.png', fullPage: true });
+});
+test('empty desktop screenshot and local-only networking', async ({ page }) => {
+  const outgoing = []; page.on('request', request => { if (!request.url().startsWith('http://127.0.0.1:4173')) outgoing.push(request.url()); });
+  await page.goto('/book-club-vote-analyzer/');
+  await page.screenshot({ path: 'test-results/desktop-empty.png', fullPage: true });
+  await upload(page, 'current', current);
+  await expect(page.locator('#results')).toContainText('Provisional');
+  await page.screenshot({ path: 'test-results/desktop-results.png', fullPage: true });
+  expect(outgoing).toEqual([]);
+});
