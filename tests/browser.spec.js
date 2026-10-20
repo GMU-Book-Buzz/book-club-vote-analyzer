@@ -10,7 +10,7 @@ async function upload(page, kind, text, extra = false) {
   await page.locator(`#${kind}-file`).setInputFiles({ name: 'votes.zip', mimeType: 'application/zip', buffer: await zip.generateAsync({ type: 'nodebuffer' }) });
 }
 const current = csv([['Alice', 'Yes :)', '1', '2', '3'], ['Bob', 'No :(', '1', '', '3'], ['Carol', "I'm a brand new member!!", '2', '1', '3']]);
-const testHistory = { semester: 'Fall 2026', start: '2026-09', end: '2026-12', defaultMonth: '2026-11', months: [
+const testHistory = { semester: 'Fall 2026', months: [
   { id: '2026-09', label: 'September 2026', voters: [await historyFingerprint('Alice', '2026-09')] },
   { id: '2026-10', label: 'October 2026', voters: [await historyFingerprint('Bob', '2026-10')] },
 ] };
@@ -41,7 +41,7 @@ test('automatic semester history, new-member validation, filters, and overrides'
   await expect(page.getByRole('checkbox', { name: 'Count ballot: Alice (row 2)', exact: true })).toBeChecked();
   expect(errors).toEqual([]);
 });
-test('election month prevents self-matches and current import resets ballot visibility', async ({ page }) => {
+test('all stored history is automatic and current import resets ballot visibility', async ({ page }) => {
   await page.goto('/book-club-vote-analyzer/');
   await upload(page, 'current', current);
   await page.locator('#issues-only').check();
@@ -50,12 +50,9 @@ test('election month prevents self-matches and current import resets ballot visi
   await expect(page.locator('#current-status')).toContainText('2 responses');
   await expect(page.locator('#issues-only')).not.toBeChecked();
   await expect(page.locator('#ballots tbody tr')).toHaveCount(2);
-  await page.locator('#election-month').fill('2026-10');
-  await expect(page.locator('#history-status')).toContainText('Automatic history: September 2026.');
-  await expect(page.locator('#ballots tbody tr').filter({ hasText: 'Bob' })).toContainText('No earlier vote found');
-  await page.locator('#election-month').fill('2027-11');
-  await expect(page.locator('#history-status')).toContainText('No earlier history');
-  await expect(page.locator('#ballots tbody tr').filter({ hasText: 'Alice' })).toContainText('unverified');
+  await expect(page.locator('#election-month')).toHaveCount(0);
+  await expect(page.locator('#history-status')).toContainText('September 2026 + October 2026');
+  await expect(page.locator('#ballots tbody tr').filter({ hasText: 'Bob' })).toContainText('Previously voted: October 2026');
 });
 
 test('ZIP to results, override, filtering, correction, comparison and reset', async ({ page }) => {

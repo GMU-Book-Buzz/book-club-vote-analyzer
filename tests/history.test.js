@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyHistory, earlierMonths, historyFingerprint } from '../src/history.js';
+import { applyHistory, historyFingerprint } from '../src/history.js';
 import { parseRows, selectBallots } from '../src/core.js';
 import saved from '../src/semester-history.js';
 
 const history = {
-  semester: 'Fall 2026', start: '2026-09', end: '2026-12', defaultMonth: '2026-11',
+  semester: 'Fall 2026',
   months: [
     { id: '2026-09', label: 'September 2026', voters: [await historyFingerprint('Alice', '2026-09')] },
     { id: '2026-10', label: 'October 2026', voters: [await historyFingerprint('Bob', '2026-10')] },
@@ -18,7 +18,7 @@ const make = () => parseRows([
   ['Carol', "I'm a brand new member!!", '1', '2'],
 ]);
 test('semester lookup validates new-member claims against all earlier elections', async () => {
-  const data = await applyHistory(make(), history, '2026-11');
+  const data = await applyHistory(make(), history);
   assert.deepEqual(data.ballots[0].history.months, ['September 2026']);
   assert.equal(data.ballots[0].history.conflict, true);
   assert.equal(data.ballots[2].history.returning, false);
@@ -27,26 +27,26 @@ test('semester lookup validates new-member claims against all earlier elections'
   assert.deepEqual(selected.included.map(row => row.ballot.name), ['Carol']);
   assert.equal(selected.rows[0].effectiveAttendance, 'returning');
 });
-test('same and future elections and other semesters do not establish prior membership', async () => {
-  const data = await applyHistory(make(), history, '2026-10');
+test('all saved months are checked without an election date', async () => {
+  const data = await applyHistory(make(), history);
   assert.equal(data.ballots[0].history.returning, true);
-  assert.equal(data.ballots[1].history.returning, false);
-  assert.equal(earlierMonths(history, '2026-09').length, 0);
-  assert.equal(earlierMonths(history, '2027-11').length, 0);
-  await applyHistory(data, history, '2027-11');
+  assert.deepEqual(data.ballots[1].history.months, ['October 2026']);
+  await applyHistory(data, { semester: 'Empty history', months: [] });
   assert.equal(data.ballots[0].history.checked, false);
+  assert.equal(data.ballots[1].history.returning, false);
 });
+
 test('history overrides and corrected names update membership without changing original attendance', async () => {
   const data = make(); data.ballots[0].historyDecision = 'noMatch';
-  await applyHistory(data, history, '2026-11');
+  await applyHistory(data, history);
   assert.equal(data.ballots[0].history.conflict, false);
   assert.equal(data.ballots[0].attendance, 'new');
   data.ballots[2].historyDecision = 'returning';
-  await applyHistory(data, history, '2026-11');
+  await applyHistory(data, history);
   assert.equal(data.ballots[2].history.conflict, true);
   delete data.ballots[0].historyDecision;
   data.ballots[0].name = 'Different'; data.ballots[0].identity = 'different';
-  await applyHistory(data, history, '2026-11');
+  await applyHistory(data, history);
   assert.equal(data.ballots[0].history.returning, false);
 });
 test('saved lookup contains only month metadata and hashed identities', () => {
@@ -58,7 +58,7 @@ test('saved lookup contains only month metadata and hashed identities', () => {
   });
 });
 test('an obsolete history calculation does not overwrite a newer result', async () => {
-  const data = await applyHistory(make(), history, '2026-11');
-  await applyHistory(data, history, '2026-09', () => false);
+  const data = await applyHistory(make(), history);
+  await applyHistory(data, history, () => false);
   assert.equal(data.ballots[0].history.returning, true);
 });

@@ -5,12 +5,8 @@ export async function historyFingerprint(name, month) {
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export function earlierMonths(history, electionMonth) {
-  return history.months.filter(month => month.id < electionMonth && electionMonth >= history.start && electionMonth <= history.end);
-}
-
-export async function applyHistory(dataset, history, electionMonth, shouldApply = () => true) {
-  const earlier = earlierMonths(history, electionMonth);
+export async function applyHistory(dataset, history, shouldApply = () => true) {
+  const earlier = history.months;
   const lookups = earlier.map(month => new Set(month.voters));
   const results = await Promise.all(dataset.ballots.map(async ballot => {
     const matches = [];
@@ -31,5 +27,5 @@ export function historyDescription(ballot) {
   if (ballot.historyDecision === 'noMatch') return 'No earlier vote — confirmed by organizer.';
   if (ballot.history?.returning) return `Previously voted: ${ballot.history.months.join(', ')}.`;
   if (ballot.history?.checked) return 'No earlier vote found in the loaded semester history. Spelling variants may need correction.';
-  return 'No earlier voting history is loaded for this election month. New-member status is unverified.';
+  return 'No voting history is loaded. New-member status is unverified.';
 }

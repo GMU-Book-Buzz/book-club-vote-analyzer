@@ -7,11 +7,11 @@ A free, static website for a nontechnical club organizer. ZIP extraction, CSV pa
 ## Monthly use
 
 1. Export the Google Forms response sheet as CSV (or a ZIP containing that CSV), retaining its headers.
-2. Open the website, set the election month (November 2026 by default), and choose the current-month file.
+2. Open the website and choose the current-month file.
 3. Review flagged ballots. Valid partial rankings start at 1 and contain no repeated or skipped ranks. Unranked books are tied last.
 4. Include, exclude, or correct flagged ballots. Including a gap preserves its order; including repeated ranks counts those books as tied. Unreadable ranks must be corrected. Changes affect only this browser session.
 5. Select any combination of meeting-attendance groups; all groups start selected. Unknown/missing answers have a separate category.
-6. Semester history loads automatically. November checks September and October 2026; October checks September only. No past-month upload is needed. A prior name match prevents a ballot from being classified as a new member. If their answer claims new membership, the app flags the conflict and places them in “Returning member — attendance unconfirmed.” Attendance is not inferred from having voted.
+6. Semester history loads automatically. All saved September and October 2026 voters are checked for each upload. No past-month upload is needed. A prior name match prevents a ballot from being classified as a new member. If their answer claims new membership, the app flags the conflict and places them in “Returning member — attendance unconfirmed.” Attendance is not inferred from having voted.
 7. Use the attendance × voting-history checkbox grid to include any combination (for example, exclude only non-attendees who previously voted this semester). Every ballot is displayed with a live checked/unchecked state and its features. Manual ballot checkboxes override filters, but cannot bypass missing names, unreadable ranks, or unresolved duplicates. “Follow filters” clears manual selections while retaining accepted rank overrides and corrections.
 8. Record the result using your browser's Print / Save as PDF. Refreshing or leaving clears the current file, corrections, overrides, and history decisions; built-in history remains available. Keep original exports privately.
 
@@ -21,7 +21,7 @@ If duplicate names appear, select one submission or confirm they are different p
 
 `src/semester-history.js` contains Fall 2026 comparison fingerprints for September (27 names) and October (33 names), generated from the organizer-provided exports. It includes no raw names, rankings, attendance answers, or timestamps. Each fingerprint is SHA-256 over a versioned prefix, the election month, and the normalized name. The public fingerprints are not strong anonymization: someone who guesses a name can test it. Keep original CSVs and ZIPs private.
 
-Only loaded elections earlier than the selected election month and within the configured semester are used. No history from a different semester is applied. The coverage card makes gaps visible; outside coverage, new-member claims remain unverified. Current uploads do not change the built-in history.
+Every month in the saved history list is checked automatically; no election-month selector is needed. The coverage card shows which months are loaded. If the list is empty, new-member claims remain unverified. Current uploads do not change the built-in history.
 
 To regenerate the Fall 2026 lookup, use the maintainer-only CLI, supplying all months to retain:
 
@@ -29,7 +29,7 @@ To regenerate the Fall 2026 lookup, use the maintainer-only CLI, supplying all m
 node scripts/import-history.js 2026-09 /private/september.zip 2026-10 /private/october.zip
 ```
 
-For December, add the November archive and update `defaultMonth` to `2026-12`. For a new semester, update the generator's semester range and default month and import that semester's files. Review and run both test suites before pushing. The CLI saves only fingerprints; never commit the source archives.
+To extend the list, regenerate it with every archive to retain, including the latest final-results archive. History management by the president through the website is a future feature. For a new semester, update the generator's semester label and validation range and deliberately choose which archives to retain. Review and run both test suites before pushing. The CLI saves only fingerprints; never commit the source archives.
 
 
 ## Rules and file format

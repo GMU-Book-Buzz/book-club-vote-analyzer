@@ -24,5 +24,5 @@ for (let i = 0; i < args.length; i += 2) {
   console.log(`${id}: ${dataset.ballots.length} submissions; ${voters.length} distinct normalized names.`);
 }
 months.sort((a, b) => a.id.localeCompare(b.id));
-const history = { semester: 'Fall 2026', start: '2026-09', end: '2026-12', defaultMonth: '2026-11', months };
+const history = { semester: 'Fall 2026', months };
 await writeFile('src/semester-history.js', `// Public comparison fingerprints only; no names, rankings, attendance, or timestamps.\nexport default ${JSON.stringify(history, null, 2)};\n`);

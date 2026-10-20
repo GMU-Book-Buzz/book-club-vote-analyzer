@@ -1,11 +1,11 @@
 import { attendanceLabels, normalizeName, validateRanks, duplicateGroups, selectBallots, rankedPairs } from './core.js';
 
 import semesterHistory from './semester-history.js';
-import { applyHistory, earlierMonths, historyDescription } from './history.js';
+import { applyHistory, historyDescription } from './history.js';
 
 const $ = id => document.getElementById(id);
 const allCombinations = () => Object.keys(attendanceLabels).flatMap(key => [`${key}:both`, `${key}:currentOnly`]);
-const state = { current: null, electionMonth: semesterHistory.defaultMonth, attendance: Object.keys(attendanceLabels), combinations: allCombinations(), returningOnly: false, issuesOnly: false };
+const state = { current: null, attendance: Object.keys(attendanceLabels), combinations: allCombinations(), returningOnly: false, issuesOnly: false };
 const jobs = {}, files = {};
 let editing = null;
 
@@ -67,10 +67,8 @@ async function loadFile(file, entry = null) {
       area.append(label, select, button('Use this CSV', 'choose-csv')); $('current-picker').append(area); return;
     }
     try {
-      const month = state.electionMonth;
-      await applyHistory(data.dataset, semesterHistory, month);
+      await applyHistory(data.dataset, semesterHistory);
       if (sequence !== importSequence) return;
-      if (month !== state.electionMonth) await applyHistory(data.dataset, semesterHistory, state.electionMonth);
       if (sequence !== importSequence) return;
       state.current = data.dataset;
       state.issuesOnly = false; $('issues-only').checked = false;
@@ -93,20 +91,6 @@ for (const [key, label] of Object.entries(attendanceLabels)) {
 }
 $('current-file').addEventListener('change', event => {
   const file = event.target.files[0]; if (file) loadFile(file); event.target.value = '';
-});
-$('election-month').value = state.electionMonth;
-let historySequence = 0;
-$('election-month').addEventListener('change', async event => {
-  if (!event.target.value) { event.target.value = state.electionMonth; return; }
-  state.electionMonth = event.target.value;
-  const dataset = state.current, sequence = ++historySequence;
-  if (dataset) {
-    dataset.ballots.forEach(ballot => { delete ballot.historyDecision; });
-    const month = state.electionMonth;
-    await applyHistory(dataset, semesterHistory, month, () => sequence === historySequence && state.current === dataset && state.electionMonth === month);
-    if (sequence !== historySequence || state.current !== dataset) return;
-  }
-  render();
 });
 $('returning-only').addEventListener('change', event => { state.returningOnly = event.target.checked; render(); });
 $('issues-only').addEventListener('change', event => { state.issuesOnly = event.target.checked; render(); });
@@ -230,7 +214,7 @@ function renderBallots(selection) {
     for (const [value, label] of [['auto', 'Use automatic name match'], ['returning', 'Organizer confirms returning voter'], ['noMatch', 'Organizer confirms no earlier vote']]) historySelect.append(option(label, value, (ballot.historyDecision ?? 'auto') === value));
     historySelect.addEventListener('change', async () => {
       ballot.historyDecision = historySelect.value;
-      await applyHistory(state.current, semesterHistory, state.electionMonth); render();
+      await applyHistory(state.current, semesterHistory); render();
     });
     historyLabel.append(historySelect); detail.append(historyLabel); info.append(detail);
     if (ballot.features?.length) {
@@ -249,9 +233,9 @@ function renderBallots(selection) {
 }
 
 function renderHistory() {
-  const earlier = earlierMonths(semesterHistory, state.electionMonth);
-  $('history-status').textContent = earlier.length ? `Automatic history: ${earlier.map(month => month.label).join(' + ')}. No past-month upload needed.` : 'No earlier history is loaded for this election month. New-member claims are unverified.';
-  $('history-coverage').textContent = `${semesterHistory.semester}: ${semesterHistory.months.map(month => month.label).join(', ')} loaded. Only elections earlier than the selected month are checked.`;
+  const earlier = semesterHistory.months;
+  $('history-status').textContent = earlier.length ? `Automatic history: ${earlier.map(month => month.label).join(' + ')}. No past-month upload needed.` : 'No voting history is loaded. New-member claims are unverified.';
+  $('history-coverage').textContent = `${semesterHistory.semester}: ${semesterHistory.months.map(month => month.label).join(', ')} loaded. All saved months are checked automatically.`;
   const host = $('history-summary'); host.replaceChildren();
   if (!state.current) return;
   const conflicts = state.current.ballots.filter(ballot => ballot.history?.conflict);
@@ -328,7 +312,7 @@ document.addEventListener('click', async event => {
       if (ballot.originalName !== undefined) { delete state.current.duplicateDecisions[ballot.identity]; ballot.name = ballot.originalName; ballot.identity = normalizeName(ballot.name); delete state.current.duplicateDecisions[ballot.identity]; }
       ballot.values = [...ballot.original]; ballot.corrected = false; ballot.decision = 'pending';
       delete ballot.manualSelection; delete ballot.historyDecision;
-      await applyHistory(state.current, semesterHistory, state.electionMonth);
+      await applyHistory(state.current, semesterHistory);
     }
   }
   render();
@@ -341,14 +325,14 @@ $('edit-form').addEventListener('submit', async event => {
   editing.originalName ??= editing.name;
   if (normalizeName(name) !== editing.identity) { delete state.current.duplicateDecisions[editing.identity]; delete state.current.duplicateDecisions[normalizeName(name)]; delete editing.historyDecision; }
   editing.name = name; editing.identity = normalizeName(name); editing.values = values; editing.corrected = true; editing.decision = 'include'; editing.manualSelection = true;
-  await applyHistory(state.current, semesterHistory, state.electionMonth);
+  await applyHistory(state.current, semesterHistory);
   $('edit-dialog').close(); render();
 });
 $('edit-cancel').addEventListener('click', () => $('edit-dialog').close());
 $('reset').addEventListener('click', () => { if (state.current || files.current) $('reset-dialog').showModal(); });
 $('reset-cancel').addEventListener('click', () => $('reset-dialog').close());
 $('reset-confirm').addEventListener('click', () => {
-  ++importSequence; ++historySequence; stopJob('current'); state.current = null; state.returningOnly = false; state.issuesOnly = false; state.attendance = Object.keys(attendanceLabels); state.combinations = allCombinations();
+  ++importSequence; stopJob('current'); state.current = null; state.returningOnly = false; state.issuesOnly = false; state.attendance = Object.keys(attendanceLabels); state.combinations = allCombinations();
   delete files.current;
   $('current-picker').replaceChildren(); $('current-file').value = '';
   status('current', 'ZIP or CSV · up to 10 MB · files stay on this device');

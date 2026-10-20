@@ -1,9 +1,6 @@
 // Public comparison fingerprints only; no names, rankings, attendance, or timestamps.
 export default {
   "semester": "Fall 2026",
-  "start": "2026-09",
-  "end": "2026-12",
-  "defaultMonth": "2026-11",
   "months": [
     {
       "id": "2026-09",

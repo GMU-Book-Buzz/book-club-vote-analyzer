@@ -2,4 +2,4 @@
 
 .brand-logo{width:52px;height:52px;object-fit:contain;border-radius:6px}.ballot-counted{background:#f4f8ef}.ballot-excluded{background:#fafafa}.ballot-counted td:first-child{border-left:4px solid #648261}.ballot-excluded td:first-child{border-left:4px solid #d5d7d0}#ballots{margin-top:16px}#combination-section{margin-bottom:22px}#combination-section p{font-size:13px}#combination-filters td:not(:first-child){text-align:center}#combination-filters input{width:20px;height:20px}
 
-.month-label{display:block;font-size:12px;margin:12px 0 5px}#election-month{display:block;margin-bottom:8px}.ballot-detail label{display:grid;gap:5px;font-size:11px;margin:10px 0}.ballot-detail select{font-size:11px;width:100%;min-width:180px}
+.ballot-detail label{display:grid;gap:5px;font-size:11px;margin:10px 0}.ballot-detail select{font-size:11px;width:100%;min-width:180px}
