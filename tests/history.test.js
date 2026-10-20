@@ -62,3 +62,18 @@ test('an obsolete history calculation does not overwrite a newer result', async 
   await applyHistory(data, history, () => false);
   assert.equal(data.ballots[0].history.returning, true);
 });
+test('non-attendees with voting history are flagged without inferring attendance or excluding ballots', async () => {
+  const data = await applyHistory(make(), history);
+  assert.equal(data.ballots[1].history.attendanceReview, true);
+  assert.deepEqual(data.ballots[1].history.months, ['October 2026']);
+  assert.equal(data.ballots[1].attendance, 'notAttended');
+  assert.equal(data.ballots[0].history.attendanceReview, false);
+  assert.equal(data.ballots[2].history.attendanceReview, false);
+  assert.equal(selectBallots(data, { historyMode: true }).rows[1].included, true);
+  data.ballots[1].historyDecision = 'noMatch';
+  await applyHistory(data, history);
+  assert.equal(data.ballots[1].history.attendanceReview, false);
+  data.ballots[2].attendance = 'notAttended';
+  await applyHistory(data, history);
+  assert.equal(data.ballots[2].history.attendanceReview, false);
+});

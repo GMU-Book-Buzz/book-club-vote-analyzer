@@ -16,7 +16,7 @@ export async function applyHistory(dataset, history, shouldApply = () => true) {
       }
     }
     const returning = ballot.historyDecision === 'returning' || (ballot.historyDecision !== 'noMatch' && matches.length > 0);
-    return { months: matches, returning, checked: earlier.length > 0, claimedNew: ballot.attendance === 'new', conflict: returning && ballot.attendance === 'new' };
+    return { months: matches, returning, checked: earlier.length > 0, claimedNew: ballot.attendance === 'new', conflict: returning && ballot.attendance === 'new', attendanceReview: returning && ballot.attendance === 'notAttended' };
   }));
   if (shouldApply()) dataset.ballots.forEach((ballot, index) => { ballot.history = results[index]; });
   return dataset;

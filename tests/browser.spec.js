@@ -17,6 +17,29 @@ const testHistory = { semester: 'Fall 2026', months: [
 test.beforeEach(async ({ page }) => {
   await page.route('**/semester-history.js*', route => route.fulfill({ contentType: 'text/javascript', body: `export default ${JSON.stringify(testHistory)};` }));
 });
+test('attendance-history review appears for valid ballots and follows match overrides and filters', async ({ page }) => {
+  await page.goto('/book-club-vote-analyzer/');
+  await upload(page, 'current', csv([['Bob', 'No', '1', '2', '3'], ['Carol', 'No', '1', '2', '3']]));
+  await expect(page.locator('#current-status')).toContainText('2 responses');
+  await expect(page.locator('#history-summary')).toContainText('1 report no meeting attendance despite a prior vote');
+  await page.locator('#issues-only').check();
+  await expect(page.locator('#ballots tbody tr')).toHaveCount(1);
+  const bob = page.locator('#ballots tbody tr').filter({ hasText: 'Bob' });
+  await expect(bob).toContainText('Reports no meeting attendance, but previously voted');
+  await expect(bob).toContainText('Have not attended');
+  await expect(bob.getByRole('checkbox')).toBeChecked();
+  await bob.getByText('View choices', { exact: true }).click();
+  await expect(bob).toContainText('Previously voted: October 2026');
+  await expect(bob).toContainText('prior voting record');
+  await page.getByRole('checkbox', { name: 'Have not attended + Previously voted this semester', exact: true }).uncheck();
+  await expect(bob.getByRole('checkbox')).not.toBeChecked();
+  await bob.getByText('View choices', { exact: true }).click();
+  await page.getByLabel('History match: row 2', { exact: true }).selectOption('noMatch');
+  await expect(page.locator('#history-summary')).toContainText('0 report no meeting attendance despite a prior vote');
+  await page.locator('#issues-only').uncheck();
+  await expect(bob).not.toContainText('Reports no meeting attendance, but previously voted');
+  await expect(bob.getByRole('checkbox')).toBeChecked();
+});
 test('automatic semester history, new-member validation, filters, and overrides', async ({ page }) => {
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto('/book-club-vote-analyzer/');

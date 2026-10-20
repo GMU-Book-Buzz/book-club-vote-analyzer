@@ -173,10 +173,10 @@ function renderResults(selection, result) {
 
 function renderBallots(selection) {
   $('issues-only').checked = state.issuesOnly;
-  $('review-count').textContent = `${selection.rows.filter(row => !row.validation.valid || !row.ballot.identity).length} flagged`;
+  $('review-count').textContent = `${selection.rows.filter(row => !row.validation.valid || !row.ballot.identity || row.ballot.history?.conflict || row.ballot.history?.attendanceReview).length} flagged`;
   const host = $('ballots'); host.replaceChildren();
   const duplicates = new Set(duplicateGroups(state.current).map(([key]) => key));
-  const rows = selection.rows.filter(row => !state.issuesOnly || !row.validation.valid || !row.ballot.identity || row.ballot.corrected || row.ballot.decision !== 'pending' || duplicates.has(row.ballot.identity) || row.ballot.history?.conflict);
+  const rows = selection.rows.filter(row => !state.issuesOnly || !row.validation.valid || !row.ballot.identity || row.ballot.corrected || row.ballot.decision !== 'pending' || duplicates.has(row.ballot.identity) || row.ballot.history?.conflict || row.ballot.history?.attendanceReview);
   if (!rows.length) { host.append(notice('No ballots need attention. Uncheck the option above to review all responses.', true)); return; }
   const { wrap, body } = table(['Count ballot', 'Member & features', 'Status', 'Preferences & notes', 'Organizer decision']);
   for (const row of rows) {
@@ -198,6 +198,7 @@ function renderBallots(selection) {
     if (ballot.manualSelection !== undefined) member.append(el('small', 'Manual selection · overrides filters'));
     const statusCell = el('td'); statusCell.append(el('span', row.included ? 'Counted' : row.unresolved ? 'Needs review' : 'Excluded', `status-pill ${row.unresolved ? 'warning' : row.included ? '' : 'excluded'}`));
     if (ballot.history?.conflict) statusCell.append(el('small', 'Claims new member, but an earlier vote is recorded. Filtered as returning; attendance remains unconfirmed.', 'error-text'));
+    if (ballot.history?.attendanceReview) statusCell.append(el('small', 'Reports no meeting attendance, but previously voted. Review attendance; prior voting does not prove attendance.', 'error-text'));
     if (row.reason) statusCell.append(el('small', row.reason));
     if (ballot.corrected) statusCell.append(el('small', 'Corrected in this session'));
     if (ballot.decision === 'include' && !validation.valid) statusCell.append(el('small', 'Organizer override'));
@@ -206,6 +207,7 @@ function renderBallots(selection) {
     else info.append(el('span', `${validation.ranks.filter(rank => rank !== null).length} books ranked`));
     const detail = el('details'), summary = el('summary', 'View choices'); detail.append(summary);
     detail.append(el('p', historyDescription(ballot), 'hint'));
+    if (ballot.history?.attendanceReview) detail.append(notice('Attendance check: this member reports not attending a meeting but has a prior voting record. Their answer remains “Have not attended”; use the combined filters or individual checkbox to decide whether to count this ballot.'));
     const list = el('ul');
     state.current.books.forEach((book, index) => list.append(el('li', `${book}: ${ballot.values[index] || 'Unranked'}${ballot.corrected ? ` (original: ${ballot.original[index] || 'Unranked'})` : ''}`)));
     detail.append(list);
@@ -240,8 +242,10 @@ function renderHistory() {
   if (!state.current) return;
   const conflicts = state.current.ballots.filter(ballot => ballot.history?.conflict);
   const matched = state.current.ballots.filter(ballot => ballot.history?.returning);
-  host.append(el('p', `${matched.length} current submissions match earlier voters; ${conflicts.length} claim to be new despite an earlier vote.`));
+  const attendanceReviews = state.current.ballots.filter(ballot => ballot.history?.attendanceReview);
+  host.append(el('p', `${matched.length} current submissions match earlier voters; ${conflicts.length} claim to be new despite an earlier vote; ${attendanceReviews.length} report no meeting attendance despite a prior vote.`));
   if (conflicts.length) host.append(notice('Matched new-member claims are classified as returning members with unconfirmed attendance. Review the flags in Ballot review.'));
+  if (attendanceReviews.length) host.append(notice('Attendance checks need review. Prior voting is not proof of meeting attendance; these members remain in “Have not attended.” Their matching months appear in each ballot.'));
 }
 
 function renderMethod(result) {
