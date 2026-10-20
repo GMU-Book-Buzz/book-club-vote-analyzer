@@ -1,4 +1,4 @@
-export const attendanceLabels = { attended: 'Attended a meeting', notAttended: 'Have not attended', new: 'New member', unknown: 'Unknown / missing answer' };
+export const attendanceLabels = { attended: 'Attended a meeting', notAttended: 'Have not attended', new: 'New member', returning: 'Returning member — attendance unconfirmed', unknown: 'Unknown / missing answer' };
 export const normalizeName = name => String(name ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
 
 export function attendanceCategory(value) {
@@ -98,17 +98,19 @@ export function compareMembers(current, past, links = {}) {
   return { both, currentOnly, pastOnly: pastMembers.filter(member => !used.has(member.key)) };
 }
 
-export function selectBallots(dataset, { attendance = Object.keys(attendanceLabels), returningOnly = false, comparison = null, combinations = null } = {}) {
+export function selectBallots(dataset, { attendance = Object.keys(attendanceLabels), returningOnly = false, comparison = null, combinations = null, historyMode = false } = {}) {
   const duplicates = new Set(duplicateGroups(dataset).map(([key]) => key));
   const returning = new Set(comparison?.both.flatMap(pair => pair.current.ballotIds) ?? []);
   const rows = dataset.ballots.map(ballot => {
     const validation = validateRanks(ballot.values, dataset.books.length);
     let reason = '', unresolved = false;
     const choice = dataset.duplicateDecisions[ballot.identity];
-    const participation = comparison ? returning.has(ballot.id) ? 'both' : 'currentOnly' : 'unavailable';
-    const filterReason = !attendance.includes(ballot.attendance) ? 'Attendance filter'
-      : returningOnly && !returning.has(ballot.id) ? 'Not matched in both months'
-      : comparison && combinations && !combinations.includes(`${ballot.attendance}:${participation}`) ? 'Attendance + month filter' : '';
+    const isReturning = historyMode ? !!ballot.history?.returning : returning.has(ballot.id);
+    const effectiveAttendance = historyMode && ballot.attendance === 'new' && isReturning ? 'returning' : ballot.attendance;
+    const participation = historyMode || comparison ? isReturning ? 'both' : 'currentOnly' : 'unavailable';
+    const filterReason = !attendance.includes(effectiveAttendance) ? 'Attendance / membership filter'
+      : returningOnly && !isReturning ? 'No earlier vote found'
+      : (historyMode || comparison) && combinations && !combinations.includes(`${effectiveAttendance}:${participation}`) ? 'Attendance + history filter' : '';
     if (ballot.manualSelection === false || ballot.decision === 'exclude') reason = 'Excluded by organizer';
     else if (filterReason && ballot.manualSelection !== true) reason = filterReason;
     else if (!ballot.identity) { reason = 'Missing member name'; unresolved = true; }
@@ -116,7 +118,7 @@ export function selectBallots(dataset, { attendance = Object.keys(attendanceLabe
     else if (duplicates.has(ballot.identity) && choice !== 'distinct' && choice !== ballot.id) reason = 'Earlier / other submission';
     else if (!validation.valid && !(validation.canOverride && ballot.decision === 'include')) { reason = validation.issues.join(' '); unresolved = true; }
     const canSelect = !!ballot.identity && (validation.valid || validation.canOverride) && (!duplicates.has(ballot.identity) || choice === 'distinct' || choice === ballot.id);
-    return { ballot, validation, included: !reason, reason, unresolved, participation, canSelect, filterReason };
+    return { ballot, validation, included: !reason, reason, unresolved, participation, canSelect, filterReason, effectiveAttendance };
   });
   return { rows, included: rows.filter(row => row.included), unresolved: rows.filter(row => row.unresolved).length };
 }

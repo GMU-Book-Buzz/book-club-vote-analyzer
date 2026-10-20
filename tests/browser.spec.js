@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import JSZip from 'jszip';
 import Papa from 'papaparse';
+import { historyFingerprint } from '../src/history.js';
 const headers = ['Timestamp', 'What is your full name?', 'Have you attended a Book Buzz meeting or event this semester?', 'Rank [Book A]', 'Rank [Book B]', 'Rank [Book C]'];
 const csv = rows => Papa.unparse([headers, ...rows.map(row => ['2026/09/19 11:14:44 AM AST', ...row])]);
 async function upload(page, kind, text, extra = false) {
@@ -9,47 +10,54 @@ async function upload(page, kind, text, extra = false) {
   await page.locator(`#${kind}-file`).setInputFiles({ name: 'votes.zip', mimeType: 'application/zip', buffer: await zip.generateAsync({ type: 'nodebuffer' }) });
 }
 const current = csv([['Alice', 'Yes :)', '1', '2', '3'], ['Bob', 'No :(', '1', '', '3'], ['Carol', "I'm a brand new member!!", '2', '1', '3']]);
-test('missing attendance, fresh list state, and past-month status inside each ballot', async ({ page }) => {
+const testHistory = { semester: 'Fall 2026', start: '2026-09', end: '2026-12', defaultMonth: '2026-11', months: [
+  { id: '2026-09', label: 'September 2026', voters: [await historyFingerprint('Alice', '2026-09')] },
+  { id: '2026-10', label: 'October 2026', voters: [await historyFingerprint('Bob', '2026-10')] },
+] };
+test.beforeEach(async ({ page }) => {
+  await page.route('**/semester-history.js*', route => route.fulfill({ contentType: 'text/javascript', body: `export default ${JSON.stringify(testHistory)};` }));
+});
+test('automatic semester history, new-member validation, filters, and overrides', async ({ page }) => {
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/book-club-vote-analyzer/');
+  await expect(page.locator('#past-file')).toHaveCount(0);
+  await expect(page.locator('#history-status')).toContainText('September 2026 + October 2026');
+  await upload(page, 'current', csv([['Alice', "I'm a brand new member!!", '1', '2', '3'], ['Bob', 'No', '1', '2', '3'], ['Carol', "I'm a brand new member!!", '2', '1', '3']]));
+  await expect(page.locator('#ballots tbody tr')).toHaveCount(3);
+  const alice = page.locator('#ballots tbody tr').filter({ hasText: 'Alice' });
+  await expect(alice).toContainText('Returning member — attendance unconfirmed');
+  await expect(alice).toContainText('Claims new member');
+  await alice.getByText('View choices', { exact: true }).click();
+  await expect(alice).toContainText('Previously voted: September 2026');
+  await page.getByRole('checkbox', { name: 'Have not attended + Previously voted this semester', exact: true }).uncheck();
+  await expect(page.getByRole('checkbox', { name: 'Count ballot: Bob (row 3)', exact: true })).not.toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Count ballot: Carol (row 4)', exact: true })).toBeChecked();
+  await page.getByRole('checkbox', { name: 'Returning member — attendance unconfirmed', exact: true }).uncheck();
+  await expect(page.getByRole('checkbox', { name: 'Count ballot: Alice (row 2)', exact: true })).not.toBeChecked();
+  await expect(page.locator('.metric-strip')).toContainText('1ballots counted');
+  await alice.getByText('View choices', { exact: true }).click();
+  await page.getByLabel('History match: row 2', { exact: true }).selectOption('noMatch');
+  await expect(alice).not.toContainText('Claims new member');
+  await expect(page.getByRole('checkbox', { name: 'Count ballot: Alice (row 2)', exact: true })).toBeChecked();
+  expect(errors).toEqual([]);
+});
+test('election month prevents self-matches and current import resets ballot visibility', async ({ page }) => {
   await page.goto('/book-club-vote-analyzer/');
   await upload(page, 'current', current);
-  await expect(page.locator('#ballots tbody tr')).toHaveCount(3);
   await page.locator('#issues-only').check();
   await expect(page.locator('#ballots tbody tr')).toHaveCount(1);
   await upload(page, 'current', 'Name,Rank [Old A],Rank [Old B]\nAlice,1,2\nBob,2,1');
   await expect(page.locator('#current-status')).toContainText('2 responses');
   await expect(page.locator('#issues-only')).not.toBeChecked();
   await expect(page.locator('#ballots tbody tr')).toHaveCount(2);
-  await expect(page.locator('#global-message')).toContainText('does not collect meeting attendance');
-  await upload(page, 'past', 'Name\nAlice');
-  await expect(page.locator('#past-status')).toContainText('1 responses');
-  const alice = page.locator('#ballots tbody tr').filter({ hasText: 'Alice' });
-  await alice.getByText('View choices', { exact: true }).click();
-  await expect(alice).toContainText('Voted last month: Yes');
-  const bob = page.locator('#ballots tbody tr').filter({ hasText: 'Bob' });
-  await bob.getByText('View choices', { exact: true }).click();
-  await expect(bob).toContainText('Voted last month: No matching name found');
+  await page.locator('#election-month').fill('2026-10');
+  await expect(page.locator('#history-status')).toContainText('Automatic history: September 2026.');
+  await expect(page.locator('#ballots tbody tr').filter({ hasText: 'Bob' })).toContainText('No earlier vote found');
+  await page.locator('#election-month').fill('2027-11');
+  await expect(page.locator('#history-status')).toContainText('No earlier history');
+  await expect(page.locator('#ballots tbody tr').filter({ hasText: 'Alice' })).toContainText('unverified');
 });
-test('older formats, combined filters, visible selection and logo', async ({ page }) => {
-  await page.goto('/book-club-vote-analyzer/');
-  await expect(page.getByAltText('Book Buzz bee and book logo')).toBeVisible();
-  await upload(page, 'current', csv([['Alice', 'No', '1', '2', '3'], ['Bob', 'No', '1', '2', '3'], ['Carol', 'Yes', '1', '2', '3']]));
-  await upload(page, 'past', 'Name,Old question\nAlice,hello\nCarol,world');
-  await expect(page.locator('#past-status')).toContainText('2 responses');
-  await page.getByRole('checkbox', { name: 'Have not attended + Voted in both months', exact: true }).uncheck();
-  const alice = page.getByRole('checkbox', { name: 'Count ballot: Alice (row 2)', exact: true });
-  await expect(alice).not.toBeChecked();
-  await expect(page.getByRole('checkbox', { name: 'Count ballot: Bob (row 3)', exact: true })).toBeChecked();
-  await expect(page.getByRole('checkbox', { name: 'Count ballot: Carol (row 4)', exact: true })).toBeChecked();
-  await expect(page.locator('.metric-strip')).toContainText('2ballots counted');
-  await alice.check();
-  await expect(page.locator('.metric-strip')).toContainText('3ballots counted');
-  await page.getByRole('button', { name: 'Follow filters — clear manual selections' }).click();
-  await expect(alice).not.toBeChecked();
-  await upload(page, 'past', 'Respondent,Something else\nAlice,yes');
-  await page.getByLabel('Member-name column').selectOption('0');
-  await page.getByRole('button', { name: 'Use this name column' }).click();
-  await expect(page.locator('#past-status')).toContainText('1 responses');
-});
+
 test('ZIP to results, override, filtering, correction, comparison and reset', async ({ page }) => {
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto('/book-club-vote-analyzer/');
@@ -68,11 +76,6 @@ test('ZIP to results, override, filtering, correction, comparison and reset', as
   await page.locator('#rank-2').fill('2');
   await page.getByRole('button', { name: 'Save correction' }).click();
   await expect(page.locator('#ballots')).toContainText('Corrected in this session');
-  await upload(page, 'past', csv([[' ALICE ', 'Yes', '1', '2', '3'], ['Robert', 'No', '1', '2', '3']]));
-  await expect(page.locator('#past-status')).toContainText('2 responses');
-  await page.getByText('Review matches or link spelling variants').click();
-  await page.locator('#link-current').selectOption('bob');
-  await page.getByRole('button', { name: 'Link these members' }).click();
   await page.locator('#returning-only').check();
   await expect(page.locator('.metric-strip')).toContainText('2ballots counted');
   await page.getByText('How was this result calculated?').click();
